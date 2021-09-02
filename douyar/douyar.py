@@ -12,7 +12,7 @@ import logging
 from paddle import to_tensor
 
 
-class Douya(object):
+class Douyar(object):
     """
     compare tools
     """
