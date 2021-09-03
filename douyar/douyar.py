@@ -20,10 +20,12 @@ class Douyar(object):
         self.seed = 33
         self.enable_backward = True
         self.debug = True
+        paddle.set_default_dtype(np.float64)
+        torch.set_default_dtype(torch.float64)
 
         self.paddle_api = paddle_api
         self.torch_api = torch_api
-        self.compare_dict = dict()
+        self.compare_dict = None
         self.paddle_param = dict()
         self.paddle_data = None
         self.torch_param = dict()
@@ -81,6 +83,7 @@ class Douyar(object):
             self.paddle_data = to_tensor(data["data"])
             # enable compute gradient
             self.paddle_data.stop_gradient = False
+            del(data["data"])
         for k, v in data.items():
             if isinstance(v, (np.generic, np.ndarray)):
                 if "ignore_var" in data.keys() and k not in data["ignore_var"] and k != "ignore_var" \
@@ -88,12 +91,15 @@ class Douyar(object):
                     self.paddle_param[k] = to_tensor(v)
                     # enable compute gradient
                     self.paddle_param[k].stop_gradient = False
+            else:
+                self.paddle_param[k] = v
 
     def set_torch_param(self, data: dict):
         if "data" in data.keys():
             self.torch_data = torch.tensor(data["data"])
             # enable compute gradient
             self.torch_data.requires_grad = True
+            del (data["data"])
         for k, v in data.items():
             if isinstance(v, (np.generic, np.ndarray)):
                 if "ignore_var" in data.keys() and k not in data["ignore_var"] and k != "ignore_var" \
@@ -101,6 +107,8 @@ class Douyar(object):
                     self.torch_param[k] = torch.tensor(v)
                     # enable compute gradient
                     self.torch_param[k].requires_grad = True
+            else:
+                self.torch_param[k] = v
 
     def paddle_forward(self):
         if self._layertypes(self.paddle_api) == "func":
@@ -184,21 +192,36 @@ class Douyar(object):
         logging.info("check forward ==================>>>>  ok.")
         if self.compare_dict is not None and self.enable_backward:
             logging.info("[check backward]")
-            for paddle, torch in self.compare_dict.items():
+            for paddle_var, torch_var in self.compare_dict.items():
 
                 # 获取对应的var grad
-                paddle_tmp = paddle_res[1][paddle]
-                torch_tmp = torch_res[1][torch]
+                paddle_tmp = paddle_res[1][paddle_var]
+                torch_tmp = torch_res[1][torch_var]
                 if not isinstance(paddle_tmp, np.ndarray):
                     paddle_tmp = paddle_tmp.numpy()
                 if not isinstance(torch_tmp, np.ndarray):
                     torch_tmp = torch_tmp.numpy()
-                logging.info("check grad ({} <=====> {})".format(paddle, torch))
+                logging.info("check grad ({} <=====> {})".format(paddle_var, torch_var))
                 compare(paddle_tmp, torch_tmp)
-                logging.info("check grad ({} <=====> {}) ==================>>>> ok.".format(paddle, torch))
+                logging.info("check grad ({} <=====> {}) ==================>>>> ok.".format(paddle_var, torch_var))
         elif self.compare_dict is None and self.enable_backward:
-            logging.error("please set compare_dict to check grad result")
-            raise AttributeError
+            try:
+                logging.info("[check backward]")
+                for k, v in self.paddle_param.items():
+                    # 判断是不是Variable类型
+                    if isinstance(v, paddle.Tensor):
+                        # 获取对应的var grad
+                        paddle_tmp = paddle_res[1][k]
+                        torch_tmp = torch_res[1][k]
+                        if not isinstance(paddle_tmp, np.ndarray):
+                            paddle_tmp = paddle_tmp.numpy()
+                        if not isinstance(torch_tmp, np.ndarray):
+                            torch_tmp = torch_tmp.numpy()
+                        logging.info("check grad ({} <=====> {})".format(k, k))
+                        compare(paddle_tmp, torch_tmp)
+                        logging.info("check grad ({} <=====> {}) ==================>>>> ok.".format(k, k))
+            except Exception as e:
+                logging.error("params are not same in paddle and torch. please set compare_dict to check grad result")
         else:
             pass
 
@@ -247,3 +270,7 @@ def randtool(dtype, low, high, shape):
 
     elif dtype == "float":
         return low + (high - low) * np.random.random(shape)
+
+
+def get_dict(**data):
+    return dict(data)
