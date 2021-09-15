@@ -135,6 +135,7 @@ class Douyar(object):
         return grad
 
     def run(self):
+        logging.info("start compare [paddle]{} and [torch]{}".format(str(self.paddle_api.__name__), str(self.torch_api.__name__)))
         for place in self.places:
             paddle.set_device(place)
             paddle_res = self._run_paddle()
@@ -148,16 +149,16 @@ class Douyar(object):
 
     def _run_paddle(self):
         res = self.paddle_forward()
-        logging.info("[paddle_forward] is {}".format(res.numpy()))
+        # logging.info("[paddle_forward] is {}".format(res.numpy()))
         grad = self.paddle_backward(res)
-        logging.info("[paddle_grad] is {}".format(grad))
+        # logging.info("[paddle_grad] is {}".format(grad))
         return res.numpy(), grad
 
     def _run_torch(self):
         res = self.torch_forward()
-        logging.info("[torch_forward] is {}".format(res.detach().numpy()))
+        # logging.info("[torch_forward] is {}".format(res.detach().numpy()))
         grad = self.torch_backward(res)
-        logging.info("[torch_grad] is {}".format(grad))
+        # logging.info("[torch_grad] is {}".format(grad))
         return res.detach().numpy(), grad
 
     def torch_forward(self):
@@ -192,6 +193,12 @@ class Douyar(object):
         logging.info("check forward ==================>>>>  ok.")
         if self.compare_dict is not None and self.enable_backward:
             logging.info("[check backward]")
+            if self.paddle_data is not None and self.torch_data is not None:
+                paddle_tmp = paddle_res[1]["data"].numpy()
+                torch_tmp = torch_res[1]["data"].numpy()
+                logging.info("check grad ({} <=====> {})".format("data", "data"))
+                compare(paddle_tmp, torch_tmp)
+                logging.info("check grad ({} <=====> {}) ==================>>>> ok.".format("data", "data"))
             for paddle_var, torch_var in self.compare_dict.items():
 
                 # 获取对应的var grad
@@ -207,6 +214,12 @@ class Douyar(object):
         elif self.compare_dict is None and self.enable_backward:
             try:
                 logging.info("[check backward]")
+                if self.paddle_data is not None and self.torch_data is not None:
+                    paddle_tmp = paddle_res[1]["data"].numpy()
+                    torch_tmp = torch_res[1]["data"].numpy()
+                    logging.info("check grad ({} <=====> {})".format("data", "data"))
+                    compare(paddle_tmp, torch_tmp)
+                    logging.info("check grad ({} <=====> {}) ==================>>>> ok.".format("data", "data"))
                 for k, v in self.paddle_param.items():
                     # 判断是不是Variable类型
                     if isinstance(v, paddle.Tensor):
