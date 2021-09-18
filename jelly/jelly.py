@@ -30,6 +30,8 @@ class Jelly(object):
         self.torch_forward_time = []
         self.torch_backward_time = []
 
+        self.dump_data = []
+
         self.paddle_api = paddle_api
         self.torch_api = torch_api
         self.compare_dict = None
@@ -204,7 +206,7 @@ class Jelly(object):
         logging.info("paddle {} times forward cost {}".format(tail-head, sum(sorted(self.paddle_forward_time)[head:tail])))
         logging.info("paddle {} times backward cost {}".format(tail-head, sum(sorted(self.paddle_backward_time)[head:tail])))
         logging.info("torch {} times forward cost {}".format(tail-head, sum(sorted(self.torch_forward_time)[head:tail])))
-        logging.info("torch {} times forward cost {}".format(tail-head, sum(sorted(self.torch_backward_time)[head:tail])))
+        logging.info("torch {} times backward cost {}".format(tail-head, sum(sorted(self.torch_backward_time)[head:tail])))
 
         if sum(sorted(self.paddle_forward_time)[head:tail]) > sum(sorted(self.torch_forward_time)[head:tail]):
             forward = "torch forward is {:.3f}x faster than paddle".format(sum(sorted(self.paddle_forward_time)[head:tail]) / sum(sorted(self.torch_forward_time)[head:tail]))
@@ -230,6 +232,36 @@ class Jelly(object):
         # print(sum(sorted(self.paddle_backward_time)[head:tail]))
         # print(sum(sorted(self.torch_forward_time)[head:tail]))
         # print(sum(sorted(self.torch_backward_time)[head:tail]))
+
+    def dump(self):
+        # 去掉最高和最低的 1/10 剩下的比较
+        head = int(self.times/10)
+        tail = int(self.times - self.times/10)
+        paddle_forward = sum(sorted(self.paddle_forward_time)[head:tail])
+        paddle_backward = sum(sorted(self.paddle_backward_time)[head:tail])
+        torch_forward = sum(sorted(self.torch_forward_time)[head:tail])
+        torch_backward = sum(sorted(self.torch_backward_time)[head:tail])
+
+        if sum(sorted(self.paddle_forward_time)[head:tail]) > sum(sorted(self.torch_forward_time)[head:tail]):
+            forward = "torch forward is {:.3f}x faster than paddle".format(sum(sorted(self.paddle_forward_time)[head:tail]) / sum(sorted(self.torch_forward_time)[head:tail]))
+        else:
+            forward = "paddle forward is {:.3f}x faster than torch".format(sum(sorted(self.torch_forward_time)[head:tail]) / sum(sorted(self.paddle_forward_time)[head:tail]))
+        
+        if sum(sorted(self.paddle_backward_time)[head:tail]) > sum(sorted(self.torch_backward_time)[head:tail]):
+            backward = "torch backward is {:.3f}x faster than paddle".format(sum(sorted(self.paddle_backward_time)[head:tail]) / sum(sorted(self.torch_backward_time)[head:tail]))
+        else:
+            backward = "paddle backward is {:.3f}x faster than torch".format(sum(sorted(self.torch_backward_time)[head:tail]) / sum(sorted(self.paddle_backward_time)[head:tail]))
+
+        total_paddle = sum(sorted(self.paddle_backward_time)[head:tail]) + sum(sorted(self.paddle_forward_time)[head:tail])
+        total_torch = sum(sorted(self.torch_backward_time)[head:tail]) + sum(sorted(self.torch_forward_time)[head:tail])
+
+        if total_paddle > total_torch:
+            total = "Total: torch is {:.3f}x faster than paddle".format(total_paddle / total_torch)
+        else:
+            total = "Total: paddle is {:.3f}x faster than torch".format(total_torch / total_paddle)
+
+        self.dump_data = [str(self.paddle_api.__name__), paddle_forward, paddle_backward, torch_forward, torch_backward, forward, backward, total]
+        return self.dump_data
 
     def _check(self, result):
         paddle_res = result[0]
