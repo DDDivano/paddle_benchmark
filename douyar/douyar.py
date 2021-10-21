@@ -135,8 +135,10 @@ class Douyar(object):
         return grad
 
     def run(self):
-        logging.info("start compare [paddle]{} and [torch]{}".format(str(self.paddle_api.__name__), str(self.torch_api.__name__)))
         for place in self.places:
+            logging.info("[{}]start compare [paddle]{} and [torch]{}".format(place, str(self.paddle_api.__name__),
+                                                                         str(self.torch_api.__name__)))
+
             paddle.set_device(place)
             paddle_res = self._run_paddle()
             if place == "cpu":
@@ -233,12 +235,17 @@ class Douyar(object):
                         logging.info("check grad ({} <=====> {})".format(k, k))
                         compare(paddle_tmp, torch_tmp)
                         logging.info("check grad ({} <=====> {}) ==================>>>> ok.".format(k, k))
+            except AssertionError as e:
+                pass
             except Exception as e:
+                print(e)
+
                 logging.error("params are not same in paddle and torch. please set compare_dict to check grad result")
         else:
             pass
 
-def compare(paddle, torch, delta=1e-6, rtol=1e-5):
+
+def compare(paddle, torch, delta=1e-6, rtol=0):
     """
     比较函数
     :param paddle: paddle结果
