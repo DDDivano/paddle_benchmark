@@ -16,12 +16,20 @@ class Douyar(object):
     """
     compare tools
     """
-    def __init__(self, paddle_api, torch_api):
+    def __init__(self, paddle_api, torch_api, default_type="float64"):
         self.seed = 33
         self.enable_backward = True
         self.debug = True
-        paddle.set_default_dtype(np.float64)
-        torch.set_default_dtype(torch.float64)
+
+        self.default_type = default_type
+        if self.default_type == "float64":
+            paddle.set_default_dtype(np.float64)
+            torch.set_default_dtype(torch.float64)
+        elif self.default_type == "float32":
+            paddle.set_default_dtype(np.float32)
+            torch.set_default_dtype(torch.float32)
+        else:
+            raise AttributeError("default 参数有误")
 
         self.paddle_api = paddle_api
         self.torch_api = torch_api
@@ -255,7 +263,9 @@ def compare(paddle, torch, delta=1e-6, rtol=0):
     """
     if isinstance(paddle, np.ndarray):
         expect = np.array(torch)
+        np.testing.assert_allclose(paddle, torch,atol=delta, rtol=rtol)
         res = np.allclose(paddle, torch, atol=delta, rtol=rtol, equal_nan=True)
+        np.testing.assert_allclose(paddle, torch, atol=delta,rtol=rtol)
         # 出错打印错误数据
         if res is False:
             logging.error("the paddle is {}".format(paddle))
@@ -290,6 +300,12 @@ def randtool(dtype, low, high, shape):
 
     elif dtype == "float":
         return low + (high - low) * np.random.random(shape)
+
+    elif dtype == "float32":
+        return (low + (high - low) * np.random.random(shape)).astype(np.float32)
+
+    elif dtype == "float64":
+        return (low + (high - low) * np.random.random(shape)).astype(np.float64)
 
 
 def get_dict(**data):

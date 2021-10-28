@@ -12,15 +12,32 @@ from douyar import get_dict
 
 
 
-def linear():
+def linear32():
     """
     test linear
     :return:
     """
-    x = randtool("float", -10, 10, [630, 888])
-    w = randtool("float", -10, 10, [888, 633])
-    b = randtool("float", -10, 10, [633])
-    obj = Douyar(paddle_api=paddle.nn.functional.linear, torch_api=torch.nn.functional.linear)
+    x = randtool("float32", -10, 10, [630, 888])
+    w = randtool("float32", -10, 10, [888, 633])
+    b = randtool("float32", -10, 10, [633])
+    obj = Douyar(paddle_api=paddle.nn.functional.linear, torch_api=torch.nn.functional.linear, default_type="float32")
+    paddle_param = dict({"x": x, "weight": w, "bias": b})
+    torch_param = dict({"input": x, "weight": w.transpose([1, 0]), "bias": b})
+    obj.set_paddle_param(paddle_param)
+    obj.set_torch_param(torch_param)
+    obj.compare_dict = dict({"x": "input"})
+    obj.run()
+
+
+def linear64():
+    """
+    test linear
+    :return:
+    """
+    x = randtool("float64", -10, 10, [630, 888])
+    w = randtool("float64", -10, 10, [888, 633])
+    b = randtool("float64", -10, 10, [633])
+    obj = Douyar(paddle_api=paddle.nn.functional.linear, torch_api=torch.nn.functional.linear, default_type="float64")
     paddle_param = dict({"x": x, "weight": w, "bias": b})
     torch_param = dict({"input": x, "weight": w.transpose([1, 0]), "bias": b})
     obj.set_paddle_param(paddle_param)
@@ -30,4 +47,5 @@ def linear():
 
 
 if __name__ == '__main__':
-    linear()
+    linear32()
+    linear64()
