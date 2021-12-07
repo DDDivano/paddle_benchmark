@@ -4,12 +4,13 @@
 
 import paddle
 import torch
+import json
 import numpy as np
 from inspect import isclass
 import random
-import pytest
 import logging
 import time
+import os
 from paddle import to_tensor
 
 
@@ -24,13 +25,16 @@ class Jelly(object):
         paddle.set_default_dtype(np.float64)
         torch.set_default_dtype(torch.float64)
 
-        self.times = 10000
+        self.times = 50000
         self.paddle_forward_time = []
         self.paddle_backward_time = []
         self.torch_forward_time = []
         self.torch_backward_time = []
+        self.paddle_total_time = []
+        self.torch_total_time = []
 
         self.dump_data = []
+        self.result = {"paddle": dict(), "torch": dict()}
 
         self.paddle_api = paddle_api
         self.torch_api = torch_api
@@ -157,22 +161,29 @@ class Jelly(object):
                 else:
                     torch.device(0)
                 self._run_torch()
+            self._compute()
             self._show()
 
 
     def _run_paddle(self):
+        start_forward = time.perf_counter()
         res = self.paddle_forward()
         # logging.info("[paddle_forward] is {}".format(res.numpy()))
         grad = self.paddle_backward(res)
         # logging.info("[paddle_grad] is {}".format(grad))
+        end_backward = time.perf_counter()
+        self.paddle_total_time.append(end_backward - start_forward)
         
 
     def _run_torch(self):
+        start_forward = time.perf_counter()
         res = self.torch_forward()
         # logging.info("[torch_forward] is {}".format(res.detach().numpy()))
         grad = self.torch_backward(res)
         # logging.info("[torch_grad] is {}".format(grad))
-        return res.detach().numpy(), grad
+        end_backward = time.perf_counter()
+        self.torch_total_time.append(end_backward - start_forward)
+
 
     def torch_forward(self):
         if self._layertypes(self.torch_api) == "func":
@@ -197,46 +208,79 @@ class Jelly(object):
         loss.backward()
         end_backward = time.perf_counter()
         self.torch_backward_time.append(end_backward - start_backward)
-       
+
+    def _compute(self):
+        head = int(self.times / 20)
+        tail = int(self.times - self.times / 20)
+        self.result["paddle"]["forward"] = sum(sorted(self.paddle_forward_time)[head:tail])
+        self.result["paddle"]["backward"] = sum(sorted(self.paddle_backward_time)[head:tail])
+        self.result["paddle"]["total"] = sum(sorted(self.paddle_total_time)[head:tail])
+        self.result["paddle"]["total_fb"] = self.result["paddle"]["forward"] + self.result["paddle"]["backward"]
+
+        self.result["torch"]["forward"] = sum(sorted(self.torch_forward_time)[head:tail])
+        self.result["torch"]["backward"] = sum(sorted(self.torch_backward_time)[head:tail])
+        self.result["torch"]["total"] = sum(sorted(self.torch_total_time)[head:tail])
+        self.result["torch"]["total_fb"] = self.result["torch"]["forward"] + self.result["torch"]["backward"]
+        self._save(self.result)
 
     def _show(self):
         # 去掉最高和最低的 1/10 剩下的比较
-        head = int(self.times/10)
-        tail = int(self.times - self.times/10)
-        logging.info("paddle {} times forward cost {}".format(tail-head, sum(sorted(self.paddle_forward_time)[head:tail])))
-        logging.info("paddle {} times backward cost {}".format(tail-head, sum(sorted(self.paddle_backward_time)[head:tail])))
-        logging.info("torch {} times forward cost {}".format(tail-head, sum(sorted(self.torch_forward_time)[head:tail])))
-        logging.info("torch {} times backward cost {}".format(tail-head, sum(sorted(self.torch_backward_time)[head:tail])))
+        head = int(self.times/20)
+        tail = int(self.times - self.times/20)
+        logging.info("paddle {} times forward cost {:.5f}".format(tail-head, self.result["paddle"]["forward"]))
+        logging.info("paddle {} times backward cost {:.5f}".format(tail-head, self.result["paddle"]["backward"]))
+        logging.info("paddle {} times total cost {:.5f}".format(tail-head, self.result["paddle"]["total"]))
+        logging.info("torch {} times forward cost {:.5f}".format(tail-head, self.result["torch"]["forward"]))
+        logging.info("torch {} times backward cost {:.5f}".format(tail-head, self.result["torch"]["backward"]))
+        logging.info("torch {} times total cost {:.5f}".format(tail-head, self.result["torch"]["total"]))
 
         if sum(sorted(self.paddle_forward_time)[head:tail]) > sum(sorted(self.torch_forward_time)[head:tail]):
-            forward = "torch forward is {:.3f}x faster than paddle".format(sum(sorted(self.paddle_forward_time)[head:tail]) / sum(sorted(self.torch_forward_time)[head:tail]))
+            forward = "torch forward is {:.3f}x faster than paddle".format(self.result["paddle"]["forward"] / self.result["torch"]["forward"])
         else:
-            forward = "paddle forward is {:.3f}x faster than torch".format(sum(sorted(self.torch_forward_time)[head:tail]) / sum(sorted(self.paddle_forward_time)[head:tail]))
+            forward = "paddle forward is {:.3f}x faster than torch".format(self.result["torch"]["forward"] / self.result["paddle"]["forward"])
         logging.info(forward)
 
         if sum(sorted(self.paddle_backward_time)[head:tail]) > sum(sorted(self.torch_backward_time)[head:tail]):
-            backward = "torch backward is {:.3f}x faster than paddle".format(sum(sorted(self.paddle_backward_time)[head:tail]) / sum(sorted(self.torch_backward_time)[head:tail]))
+            backward = "torch backward is {:.3f}x faster than paddle".format(self.result["paddle"]["backward"] / self.result["torch"]["backward"])
         else:
-            backward = "paddle backward is {:.3f}x faster than torch".format(sum(sorted(self.torch_backward_time)[head:tail]) / sum(sorted(self.paddle_backward_time)[head:tail]))
+            backward = "paddle backward is {:.3f}x faster than torch".format(self.result["torch"]["backward"] / self.result["paddle"]["backward"])
         logging.info(backward)
 
-        total_paddle = sum(sorted(self.paddle_backward_time)[head:tail]) + sum(sorted(self.paddle_forward_time)[head:tail])
-        total_torch = sum(sorted(self.torch_backward_time)[head:tail]) + sum(sorted(self.torch_forward_time)[head:tail])
-
-        if total_paddle > total_torch:
-            total = "Total: torch is {:.3f}x faster than paddle".format(total_paddle / total_torch)
+        if self.result["paddle"]["total_fb"] > self.result["torch"]["total_fb"]:
+            total_fb = "Total_F+B: torch is {:.3f}x faster than paddle".format(self.result["paddle"]["total_fb"] / self.result["torch"]["total_fb"])
         else:
-            total = "Total: paddle is {:.3f}x faster than torch".format(total_torch / total_paddle)
+            total_fb = "Total_F+B: paddle is {:.3f}x faster than torch".format(self.result["torch"]["total_fb"] / self.result["paddle"]["total_fb"])
+        logging.info(total_fb)
+
+        if self.result["paddle"]["total"] > self.result["torch"]["total"]:
+            total = "Total: torch is {:.3f}x faster than paddle".format(self.result["paddle"]["total"] / self.result["torch"]["total"])
+        else:
+            total = "Total: paddle is {:.3f}x faster than torch".format(self.result["torch"]["total"] / self.result["paddle"]["total"])
         logging.info(total)
         # print(sum(sorted(self.paddle_forward_time)[head:tail]))
         # print(sum(sorted(self.paddle_backward_time)[head:tail]))
         # print(sum(sorted(self.torch_forward_time)[head:tail]))
         # print(sum(sorted(self.torch_backward_time)[head:tail]))
 
+    def _save(self, data):
+        """
+        保存数据到磁盘
+        :return:
+        """
+        log_file = "./log/{}.json".format(str(self.paddle_api.__name__))
+        if not os.path.exists("./log"):
+            os.makedirs("./log")
+        try:
+            with open(log_file, 'w') as json_file:
+                json.dump(data, json_file)
+            logging.info("save success!")
+        except Exception as e:
+            print(e)
+
     def dump(self):
         # 去掉最高和最低的 1/10 剩下的比较
-        head = int(self.times/10)
-        tail = int(self.times - self.times/10)
+        head = int(self.times/100)
+        tail = int(self.times - self.times/100)
         paddle_forward = sum(sorted(self.paddle_forward_time)[head:tail])
         paddle_backward = sum(sorted(self.paddle_backward_time)[head:tail])
         torch_forward = sum(sorted(self.torch_forward_time)[head:tail])
@@ -262,59 +306,6 @@ class Jelly(object):
 
         self.dump_data = [str(self.paddle_api.__name__), paddle_forward, paddle_backward, torch_forward, torch_backward, forward, backward, total]
         return self.dump_data
-
-    def _check(self, result):
-        paddle_res = result[0]
-        torch_res = result[1]
-        logging.info("[check forward]")
-        compare(paddle_res[0], torch_res[0])
-        logging.info("check forward ==================>>>>  ok.")
-        if self.compare_dict is not None and self.enable_backward:
-            logging.info("[check backward]")
-            if self.paddle_data is not None and self.torch_data is not None:
-                paddle_tmp = paddle_res[1]["data"].numpy()
-                torch_tmp = torch_res[1]["data"].numpy()
-                logging.info("check grad ({} <=====> {})".format("data", "data"))
-                compare(paddle_tmp, torch_tmp)
-                logging.info("check grad ({} <=====> {}) ==================>>>> ok.".format("data", "data"))
-            for paddle_var, torch_var in self.compare_dict.items():
-
-                # 获取对应的var grad
-                paddle_tmp = paddle_res[1][paddle_var]
-                torch_tmp = torch_res[1][torch_var]
-                if not isinstance(paddle_tmp, np.ndarray):
-                    paddle_tmp = paddle_tmp.numpy()
-                if not isinstance(torch_tmp, np.ndarray):
-                    torch_tmp = torch_tmp.numpy()
-                logging.info("check grad ({} <=====> {})".format(paddle_var, torch_var))
-                compare(paddle_tmp, torch_tmp)
-                logging.info("check grad ({} <=====> {}) ==================>>>> ok.".format(paddle_var, torch_var))
-        elif self.compare_dict is None and self.enable_backward:
-            try:
-                logging.info("[check backward]")
-                if self.paddle_data is not None and self.torch_data is not None:
-                    paddle_tmp = paddle_res[1]["data"].numpy()
-                    torch_tmp = torch_res[1]["data"].numpy()
-                    logging.info("check grad ({} <=====> {})".format("data", "data"))
-                    compare(paddle_tmp, torch_tmp)
-                    logging.info("check grad ({} <=====> {}) ==================>>>> ok.".format("data", "data"))
-                for k, v in self.paddle_param.items():
-                    # 判断是不是Variable类型
-                    if isinstance(v, paddle.Tensor):
-                        # 获取对应的var grad
-                        paddle_tmp = paddle_res[1][k]
-                        torch_tmp = torch_res[1][k]
-                        if not isinstance(paddle_tmp, np.ndarray):
-                            paddle_tmp = paddle_tmp.numpy()
-                        if not isinstance(torch_tmp, np.ndarray):
-                            torch_tmp = torch_tmp.numpy()
-                        logging.info("check grad ({} <=====> {})".format(k, k))
-                        compare(paddle_tmp, torch_tmp)
-                        logging.info("check grad ({} <=====> {}) ==================>>>> ok.".format(k, k))
-            except Exception as e:
-                logging.error("params are not same in paddle and torch. please set compare_dict to check grad result")
-        else:
-            pass
 
 
 def randtool(dtype, low, high, shape):
