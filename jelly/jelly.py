@@ -18,7 +18,7 @@ class Jelly(object):
     """
     compare tools
     """
-    def __init__(self, paddle_api, torch_api):
+    def __init__(self, paddle_api, torch_api, place=None, card=None):
         self.seed = 33
         self.enable_backward = True
         self.debug = True
@@ -43,9 +43,10 @@ class Jelly(object):
         self.paddle_data = None
         self.torch_param = dict()
         self.torch_data = None
-        self.places = None
+        self.places = place
+        self.card = card
         self._set_seed()
-        self._set_place()
+        self._set_place(self.card)
         # 日志等级
         if self.debug:
             logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -65,19 +66,36 @@ class Jelly(object):
         if use_cuda:
             torch.cuda.manual_seed(self.seed)
 
-    def _set_place(self):
+    def _set_place(self, card=None):
         """
         init place
         :return:
         """
-        if paddle.is_compiled_with_cuda() is True:
-            if torch.cuda.is_available() is True:
-                self.places = ["cpu", "gpu:0"]
+        if self.places is None:
+            if paddle.is_compiled_with_cuda() is True:
+                if torch.cuda.is_available() is True:
+                    if card is None:
+                        paddle.set_device("gpu:0")
+                        torch.device(0)
+                    else:
+                        paddle.set_device("gpu:{}".format(card))
+                        torch.device(card)
+                else:
+                    raise EnvironmentError
             else:
-                raise EnvironmentError
+                paddle.set_device("cpu")
+                torch.device("cpu")
         else:
-            # default
-            self.places = ["cpu"]
+            if self.places == "cpu":
+                paddle.set_device("cpu")
+                torch.device("cpu")
+            else:
+                if card is None:
+                    paddle.set_device("gpu:0")
+                    torch.device(0)
+                else:
+                    paddle.set_device("gpu:{}".format(card))
+                    torch.device(card)
 
 
     def _layertypes(self, func):
@@ -152,17 +170,11 @@ class Jelly(object):
         if self.times < 10 and self.times % 10 != 0:
             raise Exception("run times must be a multiple of 10")
         logging.info("start compare [paddle]{} and [torch]{}".format(str(self.paddle_api.__name__), str(self.torch_api.__name__)))
-        for place in self.places:
-            for _ in range(self.times):
-                paddle.set_device(place)
-                self._run_paddle()
-                if place == "cpu":
-                    torch.device("cpu")
-                else:
-                    torch.device(0)
-                self._run_torch()
-            self._compute()
-            self._show()
+        for _ in range(self.times):
+            self._run_paddle()
+            self._run_torch()
+        self._compute()
+        self._show()
 
 
     def _run_paddle(self):
@@ -273,7 +285,7 @@ class Jelly(object):
         try:
             with open(log_file, 'w') as json_file:
                 json.dump(data, json_file)
-            logging.info("save success!")
+            logging.info("log save success!")
         except Exception as e:
             print(e)
 
