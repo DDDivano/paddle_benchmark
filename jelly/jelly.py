@@ -172,10 +172,10 @@ class Jelly(object):
         logging.info("start compare [paddle]{} and [torch]{}".format(str(self.paddle_api.__name__), str(self.torch_api.__name__)))
         for _ in range(self.times):
             self._run_paddle()
+        for _ in range(self.times):
             self._run_torch()
         self._compute()
         self._show()
-
 
     def _run_paddle(self):
         start_forward = time.perf_counter()
@@ -186,7 +186,6 @@ class Jelly(object):
         end_backward = time.perf_counter()
         self.paddle_total_time.append(end_backward - start_forward)
         
-
     def _run_torch(self):
         start_forward = time.perf_counter()
         res = self.torch_forward()
