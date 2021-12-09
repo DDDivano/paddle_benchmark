@@ -10,9 +10,9 @@ from jelly import randtool
 from jelly import get_dict
 
 
-def adaptivemaxpool3d():
-    obj = Jelly(paddle_api=paddle.nn.AdaptiveMaxPool3D, torch_api=torch.nn.AdaptiveMaxPool3d)
-    data = randtool("float", 0, 1, [1, 1, 1, 1, 2])
+def adaptivemaxpool2d():
+    obj = Jelly(paddle_api=paddle.nn.AdaptiveMaxPool2D, torch_api=torch.nn.AdaptiveMaxPool2d)
+    data = randtool("float", 0, 1, [1, 1, 1, 2])
     paddle_param = get_dict(data=data, output_size=1)
     torch_param = get_dict(data=data, output_size=1)
     obj.set_paddle_param(paddle_param)
@@ -21,4 +21,4 @@ def adaptivemaxpool3d():
 
 
 if __name__ == '__main__':
-    adaptivemaxpool3d()
+    adaptivemaxpool2d()
