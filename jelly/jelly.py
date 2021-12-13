@@ -18,7 +18,15 @@ class Jelly(object):
     """
     compare tools
     """
-    def __init__(self, paddle_api, torch_api, place=None, card=None):
+    def __init__(self, paddle_api, torch_api, place=None, card=None, explain=None):
+        """
+
+        :param paddle_api:
+        :param torch_api:
+        :param place:  cpu or gpu (string)
+        :param card: 0 1 2 3 (int)
+        :param explain: case的说明 会打印在日志中
+        """
         self.seed = 33
         self.enable_backward = True
         self.debug = True
@@ -47,6 +55,8 @@ class Jelly(object):
         self.card = card
         self._set_seed()
         self._set_place(self.card)
+
+        self.explain = "[place={}] {}".format(self.places, explain)
         # 日志等级
         if self.debug:
             logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -73,6 +83,7 @@ class Jelly(object):
         """
         if self.places is None:
             if paddle.is_compiled_with_cuda() is True:
+                self.places = "gpu"
                 if torch.cuda.is_available() is True:
                     if card is None:
                         paddle.set_device("gpu:0")
@@ -83,6 +94,7 @@ class Jelly(object):
                 else:
                     raise EnvironmentError
             else:
+                self.places = "cpu"
                 paddle.set_device("cpu")
                 torch.device("cpu")
         else:
@@ -96,7 +108,6 @@ class Jelly(object):
                 else:
                     paddle.set_device("gpu:{}".format(card))
                     torch.device(card)
-
 
     def _layertypes(self, func):
         """
@@ -165,7 +176,6 @@ class Jelly(object):
         end_backward = time.perf_counter()
         self.paddle_backward_time.append(end_backward - start_backward)
         
-
     def run(self):
         if self.times < 10 and self.times % 10 != 0:
             raise Exception("run times must be a multiple of 10")
@@ -232,6 +242,8 @@ class Jelly(object):
         self.result["torch"]["backward"] = sum(sorted(self.torch_backward_time)[head:tail])
         self.result["torch"]["total"] = sum(sorted(self.torch_total_time)[head:tail])
         self.result["torch"]["total_fb"] = self.result["torch"]["forward"] + self.result["torch"]["backward"]
+
+        self.result["explain"] = self.explain
         self._save(self.result)
 
     def _show(self):
