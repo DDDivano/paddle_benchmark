@@ -56,7 +56,7 @@ class Jelly(object):
         self._set_seed()
         self._set_place(self.card)
 
-        self.explain = "[place={}] {}".format(self.places, explain)
+        self.explain = "[place={}, commit={}] {}".format(self.places, paddle.__git_commit__, explain)
         # 日志等级
         if self.debug:
             logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -122,9 +122,17 @@ class Jelly(object):
 
     def set_paddle_param(self, data: dict):
         if "data" in data.keys():
-            self.paddle_data = to_tensor(data["data"])
-            # enable compute gradient
-            self.paddle_data.stop_gradient = False
+            if type(data["data"]) is tuple:
+                self.paddle_data = []
+                for i in data["data"]:
+                    i = to_tensor(i)
+                    i.stop_gradient = False
+                    self.paddle_data.append(i)
+            else:
+                self.paddle_data = []
+                self.paddle_data.append(to_tensor(data["data"]))
+                # enable compute gradient
+                self.paddle_data[0].stop_gradient = False
             del(data["data"])
         for k, v in data.items():
             if isinstance(v, (np.generic, np.ndarray)):
@@ -138,9 +146,17 @@ class Jelly(object):
 
     def set_torch_param(self, data: dict):
         if "data" in data.keys():
-            self.torch_data = torch.tensor(data["data"])
-            # enable compute gradient
-            self.torch_data.requires_grad = True
+            if type(data["data"]) is tuple:
+                self.torch_data = []
+                for i in data["data"]:
+                    i = torch.tensor(i)
+                    i.requires_grad = True
+                    self.torch_data.append(i)
+            else:
+                self.torch_data = []
+                self.torch_data.append(torch.tensor(data["data"]))
+                # enable compute gradient
+                self.torch_data[0].requires_grad = True
             del (data["data"])
         for k, v in data.items():
             if isinstance(v, (np.generic, np.ndarray)):
@@ -162,7 +178,7 @@ class Jelly(object):
         elif self._layertypes(self.paddle_api) == "class":
             obj = self.paddle_api(**self.paddle_param)
             start_forward = time.perf_counter()
-            res = obj(self.paddle_data)
+            res = obj(*self.paddle_data)
             end_forward = time.perf_counter()
             self.paddle_forward_time.append(end_forward - start_forward)
             return res
@@ -216,7 +232,7 @@ class Jelly(object):
         elif self._layertypes(self.torch_api) == "class":
             obj = self.torch_api(**self.torch_param)
             start_forward = time.perf_counter()
-            res = obj(self.torch_data)
+            res = obj(*self.torch_data)
             end_forward = time.perf_counter()
             self.torch_forward_time.append(end_forward - start_forward)
             return res
