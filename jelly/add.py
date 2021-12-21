@@ -33,4 +33,3 @@ def add2():
 
 if __name__ == '__main__':
     add()
-    add2()

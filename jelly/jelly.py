@@ -126,13 +126,15 @@ class Jelly(object):
                 self.paddle_data = []
                 for i in data["data"]:
                     i = to_tensor(i)
-                    i.stop_gradient = False
+                    if not ("ignore_var" in data.keys() and "data" in data["ignore_var"]):
+                        i.stop_gradient = False
                     self.paddle_data.append(i)
             else:
                 self.paddle_data = []
                 self.paddle_data.append(to_tensor(data["data"]))
                 # enable compute gradient
-                self.paddle_data[0].stop_gradient = False
+                if not ("ignore_var" in data.keys() and "data" in data["ignore_var"]):
+                    self.paddle_data[0].stop_gradient = False
             del(data["data"])
         for k, v in data.items():
             if isinstance(v, (np.generic, np.ndarray)):
@@ -143,6 +145,8 @@ class Jelly(object):
                     self.paddle_param[k].stop_gradient = False
             else:
                 self.paddle_param[k] = v
+        if "ignore_var" in self.paddle_param.keys():
+            del(self.paddle_param["ignore_var"])
 
     def set_torch_param(self, data: dict):
         if "data" in data.keys():
@@ -150,13 +154,15 @@ class Jelly(object):
                 self.torch_data = []
                 for i in data["data"]:
                     i = torch.tensor(i)
-                    i.requires_grad = True
+                    if not ("ignore_var" in data.keys() and "data" in data["ignore_var"]):
+                        i.requires_grad = True
                     self.torch_data.append(i)
             else:
                 self.torch_data = []
                 self.torch_data.append(torch.tensor(data["data"]))
                 # enable compute gradient
-                self.torch_data[0].requires_grad = True
+                if not ("ignore_var" in data.keys() and "data" in data["ignore_var"]):
+                    self.torch_data[0].requires_grad = True
             del (data["data"])
         for k, v in data.items():
             if isinstance(v, (np.generic, np.ndarray)):
@@ -167,6 +173,9 @@ class Jelly(object):
                     self.torch_param[k].requires_grad = True
             else:
                 self.torch_param[k] = v
+        if "ignore_var" in self.torch_param.keys():
+            del(self.torch_param["ignore_var"])
+
 
     def paddle_forward(self):
         if self._layertypes(self.paddle_api) == "func":
@@ -240,7 +249,10 @@ class Jelly(object):
             raise AttributeError
 
     def torch_backward(self, res):
-        loss = torch.mean(res)
+        if type(res) is tuple:
+            loss = torch.mean(res[0])
+        else:
+            loss = torch.mean(res)
         start_backward = time.perf_counter()
         loss.backward()
         end_backward = time.perf_counter()
