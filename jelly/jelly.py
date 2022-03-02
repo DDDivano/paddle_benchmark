@@ -36,8 +36,10 @@ class Jelly(object):
         self.times = 50000
         self.paddle_forward_time = []
         self.paddle_backward_time = []
+        self.paddle_loss_time = []
         self.torch_forward_time = []
         self.torch_backward_time = []
+        self.torch_loss_time= []
         self.paddle_total_time = []
         self.torch_total_time = []
 
@@ -153,13 +155,19 @@ class Jelly(object):
             if type(data["data"]) is tuple:
                 self.torch_data = []
                 for i in data["data"]:
-                    i = torch.tensor(i)
+                    if self.places == "cpu":
+                        i = torch.tensor(i)
+                    else:
+                        i = torch.tensor(i).to("cuda")
                     if not ("ignore_var" in data.keys() and "data" in data["ignore_var"]):
                         i.requires_grad = True
                     self.torch_data.append(i)
             else:
                 self.torch_data = []
-                self.torch_data.append(torch.tensor(data["data"]))
+                if self.places == "cpu":
+                    self.torch_data.append(torch.tensor(data["data"]))
+                else:
+                    self.torch_data.append(torch.tensor(data["data"]).to("cuda"))
                 # enable compute gradient
                 if not ("ignore_var" in data.keys() and "data" in data["ignore_var"]):
                     self.torch_data[0].requires_grad = True
@@ -168,7 +176,10 @@ class Jelly(object):
             if isinstance(v, (np.generic, np.ndarray)):
                 if "ignore_var" in data.keys() and k not in data["ignore_var"] and k != "ignore_var" \
                         or "ignore_var" not in data.keys():
-                    self.torch_param[k] = torch.tensor(v)
+                    if self.places == "cpu":
+                        self.torch_param[k] = torch.tensor(v)
+                    else:
+                        self.torch_param[k] = torch.tensor(v).to("cuda")
                     # enable compute gradient
                     self.torch_param[k].requires_grad = True
             else:
@@ -195,7 +206,10 @@ class Jelly(object):
             raise AttributeError
 
     def paddle_backward(self, res):
+        start_loss = time.perf_counter()
         loss = paddle.mean(res)
+        end_loss = time.perf_counter()
+        self.paddle_loss_time.append(end_loss - start_loss)
         start_backward = time.perf_counter()
         loss.backward()
         end_backward = time.perf_counter()
@@ -249,10 +263,13 @@ class Jelly(object):
             raise AttributeError
 
     def torch_backward(self, res):
+        start_loss = time.perf_counter()
         if type(res) is tuple:
             loss = torch.mean(res[0])
         else:
             loss = torch.mean(res)
+        end_loss = time.perf_counter()
+        self.torch_loss_time.append(end_loss - start_loss)
         start_backward = time.perf_counter()
         loss.backward()
         end_backward = time.perf_counter()
@@ -263,11 +280,13 @@ class Jelly(object):
         tail = int(self.times - self.times / 20)
         self.result["paddle"]["forward"] = sum(sorted(self.paddle_forward_time)[head:tail])
         self.result["paddle"]["backward"] = sum(sorted(self.paddle_backward_time)[head:tail])
+        self.result["paddle"]["loss"] = sum(sorted(self.paddle_loss_time)[head:tail])
         self.result["paddle"]["total"] = sum(sorted(self.paddle_total_time)[head:tail])
         self.result["paddle"]["total_fb"] = self.result["paddle"]["forward"] + self.result["paddle"]["backward"]
 
         self.result["torch"]["forward"] = sum(sorted(self.torch_forward_time)[head:tail])
         self.result["torch"]["backward"] = sum(sorted(self.torch_backward_time)[head:tail])
+        self.result["torch"]["loss"] = sum(sorted(self.torch_loss_time)[head:tail])
         self.result["torch"]["total"] = sum(sorted(self.torch_total_time)[head:tail])
         self.result["torch"]["total_fb"] = self.result["torch"]["forward"] + self.result["torch"]["backward"]
 
@@ -280,9 +299,11 @@ class Jelly(object):
         tail = int(self.times - self.times/20)
         logging.info("paddle {} times forward cost {:.5f}".format(tail-head, self.result["paddle"]["forward"]))
         logging.info("paddle {} times backward cost {:.5f}".format(tail-head, self.result["paddle"]["backward"]))
+        logging.info("paddle {} times loss cost {:.5f}".format(tail - head, self.result["paddle"]["loss"]))
         logging.info("paddle {} times total cost {:.5f}".format(tail-head, self.result["paddle"]["total"]))
         logging.info("torch {} times forward cost {:.5f}".format(tail-head, self.result["torch"]["forward"]))
         logging.info("torch {} times backward cost {:.5f}".format(tail-head, self.result["torch"]["backward"]))
+        logging.info("torch {} times loss cost {:.5f}".format(tail-head, self.result["torch"]["loss"]))
         logging.info("torch {} times total cost {:.5f}".format(tail-head, self.result["torch"]["total"]))
 
         if sum(sorted(self.paddle_forward_time)[head:tail]) > sum(sorted(self.torch_forward_time)[head:tail]):
